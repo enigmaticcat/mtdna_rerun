@@ -22,6 +22,7 @@ classifier_output/full_scan_predictions.csv
 # Data files
 *.csv
 *.tsv
+*.zip
 
 # Keep feature importance and split info
 !classifier_output/feature_importance*.csv
