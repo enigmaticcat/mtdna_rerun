@@ -1,7 +1,10 @@
 import os, csv
 from collections import defaultdict
+from config import PIPELINE_DIR, METADATA_TSV, BASE_DIR
+import os as _os
 
-pipeline_dir = "/home/minhtq/mtDNA_proj/mtdna_rerun/pipeline_results"
+pipeline_dir = PIPELINE_DIR
+out_path = _os.path.join(BASE_DIR, "metadata_rerun_mapped.tsv")
 sample_to_runs = defaultdict(list)
 
 print("Scanning pipeline directories...")
@@ -12,10 +15,7 @@ for run in runs:
         for sample in os.listdir(run_path):
             sample_to_runs[sample].append(run)
 
-tsv_path = "/home/minhtq/mtDNA_proj/mtdna_rerun/metadata_rerun.tsv"
-out_path = "/home/minhtq/mtDNA_proj/mtdna_rerun/metadata_rerun_mapped.tsv"
-
-with open(tsv_path, "r", encoding="utf-8") as fin, open(out_path, "w", encoding="utf-8", newline="") as fout:
+with open(METADATA_TSV, "r", encoding="utf-8") as fin, open(out_path, "w", encoding="utf-8", newline="") as fout:
     reader = csv.reader(fin, delimiter="\t")
     writer = csv.writer(fout, delimiter="\t")
     

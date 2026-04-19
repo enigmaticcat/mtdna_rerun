@@ -16,18 +16,15 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import StratifiedGroupKFold
-from sklearn.metrics import (roc_auc_score, f1_score, classification_report,
-                              confusion_matrix, precision_recall_curve)
+from sklearn.metrics import (roc_auc_score, classification_report,
+                              confusion_matrix, recall_score, precision_score)
 from sklearn.preprocessing import LabelEncoder
 from sklearn.impute import SimpleImputer
 
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-BASE_DIR = "/home/minhtq/mtDNA_proj/mtdna_rerun"
-TRAIN_CSV = os.path.join(BASE_DIR, "dataset/train_manifest.csv")
-TEST_CSV  = os.path.join(BASE_DIR, "dataset/test_manifest.csv")
-OUTPUT_DIR = os.path.join(BASE_DIR, "classifier_output")
+from config import TRAIN_CSV, TEST_CSV, OUTPUT_DIR
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ─────────────────────────────────────────────
@@ -120,21 +117,77 @@ print("="*52)
 test_probs = final_model.predict_proba(X_test)[:, 1]
 test_auc   = roc_auc_score(y_test, test_probs)
 
-# Find best threshold on OOF to avoid leakage
-best_f1, best_thr = 0, 0.5
-for thr in np.arange(0.1, 0.9, 0.05):
-    f1 = f1_score(y_train, (oof_probs >= thr).astype(int), zero_division=0)
-    if f1 > best_f1:
-        best_f1, best_thr = f1, thr
+# Threshold selection on OOF: recall=1 là hard constraint,
+# trong đó chọn threshold cao nhất (ít false alarm nhất).
+best_thr = 0.01  # fallback nếu không tìm được
+best_precision = 0.0
+
+print("\nOOF threshold scan (recall=1 candidates):")
+print(f"  {'thr':>6}  {'recall':>6}  {'precision':>9}  {'FP':>5}  {'FN':>5}")
+for thr in np.arange(0.01, 0.60, 0.01):
+    preds = (oof_probs >= thr).astype(int)
+    rec = recall_score(y_train, preds, zero_division=0)
+    pre = precision_score(y_train, preds, zero_division=0)
+    tn, fp, fn, tp = confusion_matrix(y_train, preds).ravel()
+    if rec >= 1.0:
+        print(f"  {thr:>6.2f}  {rec:>6.3f}  {pre:>9.3f}  {fp:>5}  {fn:>5}  ← candidate")
+        if pre > best_precision:
+            best_precision = pre
+            best_thr = thr
 
 test_preds = (test_probs >= best_thr).astype(int)
+test_rec = recall_score(y_test, test_preds, zero_division=0)
+test_pre = precision_score(y_test, test_preds, zero_division=0)
 
-print(f"ROC-AUC  : {test_auc:.4f}")
-print(f"Best Thr : {best_thr:.2f} (from OOF)")
+print(f"\nROC-AUC  : {test_auc:.4f}")
+print(f"Best Thr : {best_thr:.2f} (from OOF, recall=1 + max precision)")
+print(f"OOF precision at this thr: {best_precision:.3f}")
 print("\nClassification Report (Test Set):")
 print(classification_report(y_test, test_preds, target_names=['OK', 'ERROR']))
 print("Confusion Matrix:")
 print(confusion_matrix(y_test, test_preds))
+if test_rec < 1.0:
+    tn, fp, fn, tp = confusion_matrix(y_test, test_preds).ravel()
+    print(f"\n⚠️  WARNING: test recall = {test_rec:.3f} — {fn} error(s) missed on test set")
+
+# ─────────────────────────────────────────────
+# HARD CASE ANALYSIS
+# ─────────────────────────────────────────────
+print("\n" + "="*52)
+print("HARD CASE ANALYSIS")
+print("="*52)
+
+error_probs = test_probs[y_test == 1]
+ok_probs    = test_probs[y_test == 0]
+
+print("\nProbability distribution:")
+print(f"  ERROR (n={len(error_probs)}) — "
+      f"min={error_probs.min():.3f}  "
+      f"p10={np.percentile(error_probs,10):.3f}  "
+      f"mean={error_probs.mean():.3f}  "
+      f"p90={np.percentile(error_probs,90):.3f}")
+print(f"  OK    (n={len(ok_probs)}) — "
+      f"max={ok_probs.max():.3f}  "
+      f"p90={np.percentile(ok_probs,90):.3f}  "
+      f"mean={ok_probs.mean():.3f}  "
+      f"p10={np.percentile(ok_probs,10):.3f}")
+
+for cutoff in [0.1, 0.2, 0.3, 0.5]:
+    n = (error_probs < cutoff).sum()
+    print(f"  Error samples với prob < {cutoff}: {n}/{len(error_probs)} "
+          f"({100*n/len(error_probs):.1f}%)")
+
+# Chi tiết từng hard case (error bị model cho prob thấp nhất)
+hard_mask = (y_test == 1) & (test_probs < 0.3)
+if hard_mask.sum() > 0:
+    hard_df = df_test[hard_mask].copy()
+    hard_df['prob_error'] = test_probs[hard_mask]
+    hard_df = hard_df.sort_values('prob_error')
+    print(f"\nTop hard cases (error với prob < 0.3):")
+    print(hard_df[['sample_id', 'primer', 'run_folder', 'prob_error']]
+          .to_string(index=False))
+else:
+    print("\nKhông có error sample nào bị model cho prob < 0.3 — model phân biệt tốt.")
 
 # ─────────────────────────────────────────────
 # STEP 5: SAVE MODEL AND ASSETS

@@ -1,10 +1,7 @@
 """
-Config for train_hybrid.py — edit this file before running on a new machine.
+Config for train_hybrid.py — chỉ cần sửa config.py khi chuyển máy.
 """
-
-# ── Paths ─────────────────────────────────────────────────────────────────────
-OLD_BASE  = "/home/minhtq/mtDNA_proj/mtdna_rerun"   # original path in manifests
-BASE_DIR  = "/Users/nguyenthithutam/Desktop/mtdna_rerun"   # current machine
+from config import BASE_DIR, OLD_BASE  # noqa: F401
 
 # ── Device ────────────────────────────────────────────────────────────────────
 # "mps"  → Apple M-series  |  "cuda" → NVIDIA GPU  |  "cpu" → fallback

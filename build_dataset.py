@@ -34,8 +34,7 @@ from collections import defaultdict
 # ──────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────
-FEATURES_CSV  = "/home/minhtq/mtDNA_proj/mtdna_rerun/classifier_output/features.csv"
-DATASET_DIR   = "/home/minhtq/mtDNA_proj/mtdna_rerun/dataset"
+from config import FEATURES_CSV, DATASET_DIR
 TEST_RATIO    = 0.20      # 20% profiles vào test
 RANDOM_SEED   = 42
 USE_SYMLINKS  = True      # True: tạo symlink; False: copy file (nặng hơn)

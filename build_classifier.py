@@ -19,13 +19,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from collections import defaultdict
+from config import PIPELINE_DIR, METADATA_TSV, OUTPUT_DIR
 
-# ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
-PIPELINE_DIR = "/home/minhtq/mtDNA_proj/mtdna_rerun/pipeline_results"
-METADATA_TSV = "/home/minhtq/mtDNA_proj/mtdna_rerun/metadata_rerun.tsv"
-OUTPUT_DIR   = "/home/minhtq/mtDNA_proj/mtdna_rerun/classifier_output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 SIGNAL_THRESHOLD = 5
