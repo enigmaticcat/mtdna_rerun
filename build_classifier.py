@@ -219,12 +219,7 @@ def extract_features(json_path: str) -> dict | None:
     feats['signal_std']  = float(primary.std())
     feats['signal_cv']   = float(primary.std() / (primary.mean() + 1e-6))
 
-    # Per-channel baselines (bottom 10th percentile)
-    feats['baseline']    = float(np.percentile(primary, 10))
-    for ch, arr in zip('ACGT', [A, C, G, T]):
-        feats[f'baseline_{ch}'] = float(np.percentile(arr, 10))
-
-    # Coverage / readable length
+    # Coverage / readable length — computed first so baseline uses the read region
     readable = primary > SIGNAL_THRESHOLD
     feats['coverage_len']  = float(readable.sum())
     feats['coverage_frac'] = float(readable.mean())
@@ -235,7 +230,28 @@ def extract_features(json_path: str) -> dict | None:
         feats['read_end']         = e / n
         feats['read_length_frac'] = (e - s) / n
     else:
+        s = e = None
         feats['read_start'] = feats['read_end'] = feats['read_length_frac'] = 0.0
+
+    # Per-channel baselines — computed within the readable region so that elevated
+    # background ("nền cao") is captured even when the rest of the trace is near 0.
+    # Global 10th-percentile over ~5000 points was always 0 for hard cases.
+    if s is not None:
+        read_sl = slice(s, e + 1)
+        feats['baseline'] = float(np.percentile(primary[read_sl], 10))
+        for ch, arr in zip('ACGT', [A, C, G, T]):
+            feats[f'baseline_{ch}'] = float(np.percentile(arr[read_sl], 10))
+        sig_read = sig[read_sl]
+        primary_read   = sig_read.max(axis=1)
+        secondary_read = np.sort(sig_read, axis=1)[:, -2]
+        feats['baseline_noncall_mean']  = float(secondary_read.mean())
+        feats['baseline_noncall_ratio'] = float(secondary_read.mean() / (primary_read.mean() + 1e-6))
+    else:
+        feats['baseline'] = 0.0
+        for ch in 'ACGT':
+            feats[f'baseline_{ch}'] = 0.0
+        feats['baseline_noncall_mean']  = 0.0
+        feats['baseline_noncall_ratio'] = 0.0
 
     # Dropoff position
     thr = primary.max() * 0.2

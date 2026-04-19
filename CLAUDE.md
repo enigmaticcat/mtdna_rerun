@@ -41,11 +41,11 @@ All scripts use hardcoded paths pointing to `/home/minhtq/mtDNA_proj/mtdna_rerun
 ### Labeling logic
 A file is label 1 (error) if its primer appears in the `Issues` column of the corresponding sample row in `metadata_rerun.tsv`. Label 0 = OK.
 
-## Feature Engineering (44 features)
+## Feature Engineering (46 features)
 
 Extracted from Tracy JSON fields (`peakA/C/G/T`, `basecallQual`, `align1score`, `allele1fraction`, etc.):
 
-- **Signal statistics**: `signal_mean`, `signal_max`, `signal_cv`, per-channel baseline (A/C/G/T)
+- **Signal statistics**: `signal_mean`, `signal_max`, `signal_cv`, per-channel baseline (A/C/G/T), `baseline_noncall_mean`, `baseline_noncall_ratio` (mean secondary-channel signal within read — captures "nền cao")
 - **Coverage**: `coverage_len`, `coverage_frac`, `read_start`, `read_end`, `read_length_frac`
 - **Mixed signal** (secondary peak ratio): `sec_ratio_mean/max/p75/p90`, `n_mixed_pos`, `frac_mixed_pos`
 - **Dyeblob detection**: `early_max_ratio`, `late_max_ratio`
