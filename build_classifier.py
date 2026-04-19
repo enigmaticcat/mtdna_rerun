@@ -372,15 +372,8 @@ for _, row in df_labeled.iterrows():
 
 df_feat = pd.DataFrame(feature_rows)
 
-# Post-processing: primer-normalized signal strength và read length
-# Weak signal / short read trông "bình thường" khi nhìn tuyệt đối,
-# nhưng thấp bất thường so với các file cùng primer.
-primer_stats = df_feat.groupby('primer')[['signal_max', 'coverage_len']].median()
-primer_stats.columns = ['primer_signal_median', 'primer_covlen_median']
-df_feat = df_feat.join(primer_stats, on='primer')
-df_feat['signal_max_pnorm']   = df_feat['signal_max']   / (df_feat['primer_signal_median'] + 1e-6)
-df_feat['coverage_len_pnorm'] = df_feat['coverage_len'] / (df_feat['primer_covlen_median'] + 1e-6)
-df_feat.drop(columns=['primer_signal_median', 'primer_covlen_median'], inplace=True)
+# signal_max_pnorm / coverage_len_pnorm được tính trong train_final_v2.py
+# (chỉ dùng train statistics) để tránh data leakage.
 
 print(f"\nFeature extraction complete: {len(df_feat)} files, {len(df_feat.columns)} columns")
 print(f"Label distribution:\n{df_feat['label'].value_counts().to_string()}")

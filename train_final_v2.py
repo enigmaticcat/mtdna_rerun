@@ -37,6 +37,15 @@ df_test  = pd.read_csv(TEST_CSV)
 META_COLS = ['json_path', 'split', 'run_folder', 'sample_id', 'primer', 'label', 'well', 'date']
 FEATURE_COLS = [c for c in df_train.columns if c not in META_COLS and c != 'primer_safe']
 
+# Primer-normalized features — dùng train-only median để tránh data leakage
+primer_stats = df_train.groupby('primer')[['signal_max', 'coverage_len']].median()
+primer_stats.columns = ['_sig_med', '_cov_med']
+for df in [df_train, df_test]:
+    df['signal_max_pnorm']   = df['signal_max']   / df['primer'].map(primer_stats['_sig_med']).fillna(1)
+    df['coverage_len_pnorm'] = df['coverage_len'] / df['primer'].map(primer_stats['_cov_med']).fillna(1)
+
+FEATURE_COLS = [c for c in df_train.columns if c not in META_COLS and c != 'primer_safe']
+
 print(f"  Train: {len(df_train)} files ({df_train['label'].sum()} errors)")
 print(f"  Test:  {len(df_test)} files ({df_test['label'].sum()} errors)")
 print(f"  Features: {len(FEATURE_COLS)}")
@@ -201,12 +210,13 @@ importance.to_csv(os.path.join(OUTPUT_DIR, "feature_importance_v2.csv"), index=F
 
 with open(os.path.join(OUTPUT_DIR, "classifier_v2.pkl"), 'wb') as f:
     pickle.dump({
-        'model': final_model,
-        'imputer': imp,
+        'model':         final_model,
+        'imputer':       imp,
         'label_encoder': le,
-        'feature_cols': final_feat_cols,
-        'threshold': best_thr,
-        'test_auc': test_auc
+        'feature_cols':  final_feat_cols,
+        'threshold':     best_thr,
+        'test_auc':      test_auc,
+        'primer_stats':  primer_stats,  # để tái tạo pnorm features khi inference
     }, f)
 
 print(f"\n✓ Saved model to {OUTPUT_DIR}/classifier_v2.pkl")
