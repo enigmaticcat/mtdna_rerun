@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+
+# Large data & model files
+pipeline_results/
+MS_100426_001/
+dataset/train/
+dataset/test/
+classifier_output/*.pkl
+classifier_output/*.pt
+classifier_output/*.csv
+
+# Raw feature/scan outputs (regenerable)
+classifier_output/features.csv
+classifier_output/records_raw.csv
+classifier_output/full_scan_predictions.csv
+
+# Keep feature importance and split info
+!classifier_output/feature_importance*.csv
+!dataset/train_manifest.csv
+!dataset/test_manifest.csv
+!dataset/split_info.json
+
+# OS
+.DS_Store
