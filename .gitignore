@@ -19,6 +19,10 @@ classifier_output/features.csv
 classifier_output/records_raw.csv
 classifier_output/full_scan_predictions.csv
 
+# Data files
+*.csv
+*.tsv
+
 # Keep feature importance and split info
 !classifier_output/feature_importance*.csv
 !dataset/train_manifest.csv
