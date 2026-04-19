@@ -22,7 +22,7 @@ python train_final_v2.py
 python map_results.py
 ```
 
-All scripts use hardcoded paths pointing to `/home/minhtq/mtDNA_proj/mtdna_rerun`. **Update paths at the top of each script when running in a different environment.**
+All paths are centralized in `config.py` — only edit `BASE_DIR` and `DATA_DIR` when moving to a new environment.
 
 ## Key Data
 
@@ -41,18 +41,31 @@ All scripts use hardcoded paths pointing to `/home/minhtq/mtDNA_proj/mtdna_rerun
 ### Labeling logic
 A file is label 1 (error) if its primer appears in the `Issues` column of the corresponding sample row in `metadata_rerun.tsv`. Label 0 = OK.
 
-## Feature Engineering (46 features)
+## Feature Engineering (57 features)
 
 Extracted from Tracy JSON fields (`peakA/C/G/T`, `basecallQual`, `align1score`, `allele1fraction`, etc.):
 
-- **Signal statistics**: `signal_mean`, `signal_max`, `signal_cv`, per-channel baseline (A/C/G/T), `baseline_noncall_mean`, `baseline_noncall_ratio` (mean secondary-channel signal within read — captures "nền cao")
+- **Signal statistics**: `signal_mean`, `signal_max`, `signal_cv`, per-channel baseline (A/C/G/T), `baseline_noncall_mean`, `baseline_noncall_ratio` (within readable region — captures "nền cao")
 - **Coverage**: `coverage_len`, `coverage_frac`, `read_start`, `read_end`, `read_length_frac`
-- **Mixed signal** (secondary peak ratio): `sec_ratio_mean/max/p75/p90`, `n_mixed_pos`, `frac_mixed_pos`
+- **Primer-normalized** (post-processing): `signal_max_pnorm`, `coverage_len_pnorm` — signal/read length relative to per-primer median; captures "tín hiệu yếu"
+- **Mixed signal**: `sec_ratio_mean/max/p75/p90`, `n_mixed_pos`, `frac_mixed_pos`, `max_mixed_run`, `max_mixed_run_frac` (longest consecutive cluster — captures polyC)
 - **Dyeblob detection**: `early_max_ratio`, `late_max_ratio`
-- **Quartile analysis**: `q1/q2/q3_mean`, `q1/q2/q3_std`, `q1/q2/q3_sec_mean`
-- **Quality**: `qual_mean`, `qual_p10`, `qual_below20_frac`, `qual_below40_frac`
-- **Alignment**: `align1score`, `align2score`, `allele1frac`, `allele2frac`, `dropoff_pos`
+- **Quartile analysis**: `q1/q2/q3_mean`, `q1/q2/q3_std`, `q1/q2/q3_sec_mean`, `q1/q2/q3_sec_max` (per-quartile secondary peak max — captures heteroplasmy at specific positions)
+- **Quality**: `qual_mean`, `qual_p10`, `qual_below20_frac`, `qual_below40_frac`, `qual_first_half`, `qual_second_half`, `qual_dropoff_ratio`, `qual_q20_last` (dropoff features — captures polyC / deletion quality collapse)
+- **Alignment**: `align1score`, `align2score`, `allele1frac`, `allele2frac`, `dropoff_pos` (allele fields use `_safe_float` — avoids 0.0 → NaN bug)
 - **Categorical**: `primer_enc` (label-encoded primer name) — top feature by importance
+
+### Hard error types and detectability
+| Error type | Detectable? | Key features |
+|---|---|---|
+| Dyeblob | Yes | `early/late_max_ratio` |
+| High baseline ("nền cao") | Yes | `baseline_noncall_mean/ratio` |
+| PolyC / AC repeat | Partial | `max_mixed_run`, `qual_dropoff_ratio` |
+| Short read ("ngắn") | Partial | `coverage_len_pnorm` |
+| Weak signal ("tín hiệu yếu") | Partial | `signal_max_pnorm` |
+| Heteroplasmy | Hard | `q_sec_max`, `allele2frac` |
+| Deletion | Hard | `qual_dropoff_ratio`, `qual_q20_last` |
+| Sample mix-up ("nhầm mẫu") | No | Requires cross-file comparison |
 
 ## Model Architecture
 

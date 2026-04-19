@@ -189,6 +189,16 @@ df_records.to_csv(f"{OUTPUT_DIR}/records_raw.csv", index=False)
 # STEP 3: FEATURE EXTRACTION
 # ─────────────────────────────────────────────
 
+def _safe_float(val):
+    """None/missing → NaN; không dùng `or` để tránh convert 0.0 thành NaN."""
+    if val is None:
+        return np.nan
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return np.nan
+
+
 def extract_features(json_path: str) -> dict | None:
     feats = {}
     try:
@@ -267,6 +277,17 @@ def extract_features(json_path: str) -> dict | None:
     feats['n_mixed_pos']     = float((sr > 0.3).sum())
     feats['frac_mixed_pos']  = float((sr > 0.3).mean())
 
+    # Longest consecutive run of mixed positions — phân biệt polyC (cluster liên tục)
+    # với nhiễu rải rác (cùng n_mixed_pos nhưng pattern khác nhau)
+    mixed_mask = (sr > 0.3).astype(int)
+    padded = np.concatenate([[0], mixed_mask, [0]])
+    diffs  = np.diff(padded)
+    starts = np.where(diffs == 1)[0]
+    ends   = np.where(diffs == -1)[0]
+    runs   = ends - starts
+    feats['max_mixed_run']      = float(runs.max()) if len(runs) else 0.0
+    feats['max_mixed_run_frac'] = feats['max_mixed_run'] / n
+
     # Dyeblob: isolated spike at start or end
     e5 = max(int(n * 0.05), 10)
     mid_mean = primary[e5:-e5].mean() + 1e-6
@@ -281,9 +302,10 @@ def extract_features(json_path: str) -> dict | None:
     ]:
         seg = primary[qs:qe]
         sec_seg = secondary[qs:qe]
-        feats[f'{qname}_mean']     = float(seg.mean()) if len(seg) else 0.0
-        feats[f'{qname}_std']      = float(seg.std()) if len(seg) else 0.0
+        feats[f'{qname}_mean']     = float(seg.mean())     if len(seg)     else 0.0
+        feats[f'{qname}_std']      = float(seg.std())      if len(seg)     else 0.0
         feats[f'{qname}_sec_mean'] = float(sec_seg.mean()) if len(sec_seg) else 0.0
+        feats[f'{qname}_sec_max']  = float(sec_seg.max())  if len(sec_seg) else 0.0
 
     # Readable region uniformity
     if readable.sum() > 10:
@@ -299,21 +321,34 @@ def extract_features(json_path: str) -> dict | None:
     # Basecall quality
     quals = np.array(d.get('basecallQual') or [], dtype=float)
     if len(quals) > 0:
-        feats['qual_mean']            = float(quals.mean())
-        feats['qual_p10']             = float(np.percentile(quals, 10))
-        feats['qual_below20_frac']    = float((quals < 20).mean())
-        feats['qual_below40_frac']    = float((quals < 40).mean())
-        feats['n_basecalls']          = float(len(quals))
+        feats['qual_mean']         = float(quals.mean())
+        feats['qual_p10']          = float(np.percentile(quals, 10))
+        feats['qual_below20_frac'] = float((quals < 20).mean())
+        feats['qual_below40_frac'] = float((quals < 40).mean())
+        feats['n_basecalls']       = float(len(quals))
+        # Quality dropoff: so sánh nửa đầu vs nửa sau — detect polyC / deletion
+        mid = len(quals) // 2
+        q_first  = float(quals[:mid].mean()) if mid > 0 else np.nan
+        q_second = float(quals[mid:].mean()) if len(quals) > mid else np.nan
+        feats['qual_first_half']    = q_first
+        feats['qual_second_half']   = q_second
+        feats['qual_dropoff_ratio'] = q_second / (q_first + 1e-6)
+        # Vị trí cuối cùng còn quality >= 20 (normalized) — detect khi read kết thúc sớm
+        above20 = np.where(quals >= 20)[0]
+        feats['qual_q20_last'] = float(above20[-1]) / len(quals) if len(above20) else 0.0
     else:
         feats['qual_mean'] = feats['qual_p10'] = np.nan
         feats['qual_below20_frac'] = feats['qual_below40_frac'] = np.nan
         feats['n_basecalls'] = 0.0
+        feats['qual_first_half'] = feats['qual_second_half'] = np.nan
+        feats['qual_dropoff_ratio'] = np.nan
+        feats['qual_q20_last'] = 0.0
 
-    # Alignment & allele fraction
-    feats['align1score']  = float(d.get('align1score') or np.nan)
-    feats['align2score']  = float(d.get('align2score') or np.nan)
-    feats['allele1frac']  = float(d.get('allele1fraction') or np.nan)
-    feats['allele2frac']  = float(d.get('allele2fraction') or np.nan)
+    # Alignment & allele fraction — dùng _safe_float để tránh convert 0.0 → NaN
+    feats['align1score'] = _safe_float(d.get('align1score'))
+    feats['align2score'] = _safe_float(d.get('align2score'))
+    feats['allele1frac'] = _safe_float(d.get('allele1fraction'))
+    feats['allele2frac'] = _safe_float(d.get('allele2fraction'))
 
     return feats
 
@@ -336,6 +371,17 @@ for _, row in df_labeled.iterrows():
         print(f"  {len(feature_rows)} files processed...")
 
 df_feat = pd.DataFrame(feature_rows)
+
+# Post-processing: primer-normalized signal strength và read length
+# Weak signal / short read trông "bình thường" khi nhìn tuyệt đối,
+# nhưng thấp bất thường so với các file cùng primer.
+primer_stats = df_feat.groupby('primer')[['signal_max', 'coverage_len']].median()
+primer_stats.columns = ['primer_signal_median', 'primer_covlen_median']
+df_feat = df_feat.join(primer_stats, on='primer')
+df_feat['signal_max_pnorm']   = df_feat['signal_max']   / (df_feat['primer_signal_median'] + 1e-6)
+df_feat['coverage_len_pnorm'] = df_feat['coverage_len'] / (df_feat['primer_covlen_median'] + 1e-6)
+df_feat.drop(columns=['primer_signal_median', 'primer_covlen_median'], inplace=True)
+
 print(f"\nFeature extraction complete: {len(df_feat)} files, {len(df_feat.columns)} columns")
 print(f"Label distribution:\n{df_feat['label'].value_counts().to_string()}")
 df_feat.to_csv(f"{OUTPUT_DIR}/features.csv", index=False)
